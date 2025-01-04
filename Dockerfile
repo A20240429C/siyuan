@@ -35,7 +35,7 @@ RUN apk add --no-cache gcc musl-dev && \
     find /opt/siyuan/ -name .git | xargs rm -rf
 
 FROM alpine:latest
-LABEL maintainer="Liang Ding<845765@qq.com>"
+LABEL maintainer="Liang Ding<1111111@qq.com>"
 
 WORKDIR /opt/siyuan/
 COPY --from=GO_BUILD /opt/siyuan/ /opt/siyuan/
