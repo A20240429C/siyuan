@@ -31,6 +31,25 @@ import (
 	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
+func checkBlockRef(c *gin.Context) {
+	ret := gulu.Ret.NewResult()
+	defer c.JSON(http.StatusOK, ret)
+
+	arg, ok := util.JsonArg(c, ret)
+	if !ok {
+		return
+	}
+
+	idsArg := arg["ids"].([]interface{})
+	var ids []string
+	for _, id := range idsArg {
+		ids = append(ids, id.(string))
+	}
+	ids = gulu.Str.RemoveDuplicatedElem(ids)
+
+	ret.Data = model.CheckBlockRef(ids)
+}
+
 func getBlockTreeInfos(c *gin.Context) {
 	ret := gulu.Ret.NewResult()
 	defer c.JSON(http.StatusOK, ret)
@@ -438,11 +457,10 @@ func getRefIDs(c *gin.Context) {
 	}
 
 	id := arg["id"].(string)
-	refIDs, refTexts, defIDs := model.GetBlockRefs(id, true)
-	ret.Data = map[string][]string{
-		"refIDs":   refIDs,
-		"refTexts": refTexts,
-		"defIDs":   defIDs,
+	refDefs, originalRefBlockIDs := model.GetBlockRefs(id)
+	ret.Data = map[string]any{
+		"refDefs":             refDefs,
+		"originalRefBlockIDs": originalRefBlockIDs,
 	}
 }
 
@@ -456,10 +474,17 @@ func getRefIDsByFileAnnotationID(c *gin.Context) {
 	}
 
 	id := arg["id"].(string)
-	refIDs, refTexts := model.GetBlockRefIDsByFileAnnotationID(id)
-	ret.Data = map[string][]string{
-		"refIDs":   refIDs,
-		"refTexts": refTexts,
+	refIDs := model.GetBlockRefIDsByFileAnnotationID(id)
+	var retRefDefs []model.RefDefs
+	for _, blockID := range refIDs {
+		retRefDefs = append(retRefDefs, model.RefDefs{RefID: blockID, DefIDs: []string{}})
+	}
+	if 1 > len(retRefDefs) {
+		retRefDefs = []model.RefDefs{}
+	}
+
+	ret.Data = map[string]any{
+		"refDefs": retRefDefs,
 	}
 }
 
@@ -480,7 +505,17 @@ func getBlockDefIDsByRefText(c *gin.Context) {
 	}
 	excludeIDs = nil // 不限制虚拟引用搜索自己 https://ld246.com/article/1633243424177
 	ids := model.GetBlockDefIDsByRefText(anchor, excludeIDs)
-	ret.Data = ids
+	var retRefDefs []model.RefDefs
+	for _, id := range ids {
+		retRefDefs = append(retRefDefs, model.RefDefs{RefID: id, DefIDs: []string{}})
+	}
+	if 1 > len(retRefDefs) {
+		retRefDefs = []model.RefDefs{}
+	}
+
+	ret.Data = map[string]any{
+		"refDefs": retRefDefs,
+	}
 }
 
 func getBlockBreadcrumb(c *gin.Context) {

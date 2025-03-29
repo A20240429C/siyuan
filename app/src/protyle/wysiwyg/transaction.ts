@@ -1,6 +1,6 @@
 import {fetchPost, fetchSyncPost} from "../../util/fetch";
 import {focusBlock, focusByWbr, focusSideBlock, getEditorRange} from "../util/selection";
-import {getContenteditableElement, getTopAloneElement} from "./getBlock";
+import {getContenteditableElement, getFirstBlock, getTopAloneElement} from "./getBlock";
 import {Constants} from "../../constants";
 import {blockRender} from "../render/blockRender";
 import {processRender} from "../util/processCode";
@@ -142,7 +142,9 @@ const promiseTransaction = () => {
                 if (protyle.options.backlinkData) {
                     const updateElements: Element[] = [];
                     Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.id}"]`)).forEach(item => {
-                        if (!isInEmbedBlock(item)) {
+                        if (!isInEmbedBlock(item) &&
+                            // 当前操作块不再进行操作，否则光标丢失 https://github.com/siyuan-note/siyuan/issues/13946
+                            !item.contains(range.startContainer)) {
                             updateElements.push(item);
                             return;
                         }
@@ -150,14 +152,14 @@ const promiseTransaction = () => {
                     let hasFind = false;
                     if (operation.previousID && updateElements.length > 0) {
                         Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.previousID}"]`)).forEach(item => {
-                            if (!isInEmbedBlock(item)) {
+                            if (!isInEmbedBlock(item) && !item.nextElementSibling.contains(range.startContainer)) {
                                 item.after(processClonePHElement(updateElements[0].cloneNode(true) as Element));
                                 hasFind = true;
                             }
                         });
                     } else if (updateElements.length > 0) {
                         Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.parentID}"]`)).forEach(item => {
-                            if (!isInEmbedBlock(item)) {
+                            if (!isInEmbedBlock(item) && !getFirstBlock(item).contains(range.startContainer)) {
                                 // 列表特殊处理
                                 if (item.firstElementChild?.classList.contains("protyle-action")) {
                                     item.firstElementChild.after(processClonePHElement(updateElements[0].cloneNode(true) as Element));
@@ -178,7 +180,7 @@ const promiseTransaction = () => {
                 }
                 // 更新嵌入块
                 protyle.wysiwyg.element.querySelectorAll('[data-type="NodeBlockQueryEmbed"]').forEach((item) => {
-                    if (item.querySelector(`[data-node-id="${operation.id}"]`)) {
+                    if (item.querySelector(`[data-node-id="${operation.id}"],[data-node-id="${operation.parentID}"],[data-node-id="${operation.previousID}"]`)) {
                         item.removeAttribute("data-render");
                         blockRender(protyle, item);
                     }
@@ -261,9 +263,24 @@ const promiseTransaction = () => {
 
 const updateEmbed = (protyle: IProtyle, operation: IOperation) => {
     let updatedEmbed = false;
-    protyle.wysiwyg.element.querySelectorAll(`[data-type="NodeBlockQueryEmbed"] [data-node-id="${operation.id}"]`).forEach((item) => {
-        const tempElement = document.createElement("div");
+    let html = operation.data;
+    const updateEmbedElements = Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-type="NodeBlockQueryEmbed"] [data-node-id="${operation.id}"]`));
+    if (updateEmbedElements.length === 0) {
+        const tempElement = document.createElement("template");
         tempElement.innerHTML = operation.data;
+        protyle.wysiwyg.element.querySelectorAll('[data-type="NodeBlockQueryEmbed"]').forEach((item) => {
+            item.querySelectorAll(".protyle-wysiwyg__embed").forEach(embedBlockItem => {
+                const newTempElement = tempElement.content.querySelector(`[data-node-id="${embedBlockItem.getAttribute("data-id")}"]`);
+                if (newTempElement) {
+                    updateEmbedElements.push(embedBlockItem.querySelector("[data-node-id]"));
+                    html = newTempElement.outerHTML;
+                }
+            });
+        });
+    }
+    updateEmbedElements.forEach((item) => {
+        const tempElement = document.createElement("div");
+        tempElement.innerHTML = html;
         tempElement.querySelectorAll('[contenteditable="true"]').forEach(editItem => {
             editItem.setAttribute("contenteditable", "false");
         });
@@ -453,6 +470,24 @@ export const onTransaction = (protyle: IProtyle, operation: IOperation, isUndo: 
         return;
     }
     if (operation.action === "update") {
+        // 缩放后仅更新局部 https://github.com/siyuan-note/siyuan/issues/14326
+        if (updateElements.length === 0) {
+            const newUpdateElement = protyle.wysiwyg.element.querySelector("[data-node-id]");
+            const newUpdateId = newUpdateElement.getAttribute("data-node-id");
+            const tempElement = document.createElement("template");
+            tempElement.innerHTML = operation.data;
+            const newTempElement = tempElement.content.querySelector(`[data-node-id="${newUpdateId}"]`);
+            if (newTempElement) {
+                updateElements.push(newUpdateElement);
+                operation.data = newTempElement.outerHTML;
+                operation.id = newUpdateId;
+                // https://github.com/siyuan-note/siyuan/issues/14326#issuecomment-2746140335
+                for (let i = 1; i < protyle.wysiwyg.element.childElementCount; i++) {
+                    protyle.wysiwyg.element.childNodes[i].remove();
+                    i--;
+                }
+            }
+        }
         if (updateElements.length > 0) {
             updateBlock(updateElements, protyle, operation, isUndo);
         } else if (isUndo) {
@@ -661,13 +696,15 @@ export const onTransaction = (protyle: IProtyle, operation: IOperation, isUndo: 
                 focusByWbr(protyle.wysiwyg.element, range);
             }
         }
-        // 更新 ws 嵌入块
-        protyle.wysiwyg.element.querySelectorAll('[data-type="NodeBlockQueryEmbed"]').forEach((item) => {
-            if (item.querySelector(`[data-node-id="${operation.id}"],[data-node-id="${operation.parentID}"],[data-node-id="${operation.previousID}"]`)) {
-                item.removeAttribute("data-render");
-                blockRender(protyle, item);
-            }
-        });
+        // 更新 ws 嵌入块，undo 会在 transaction 中更新
+        if (!isUndo) {
+            protyle.wysiwyg.element.querySelectorAll('[data-type="NodeBlockQueryEmbed"]').forEach((item) => {
+                if (item.querySelector(`[data-node-id="${operation.id}"],[data-node-id="${operation.parentID}"],[data-node-id="${operation.previousID}"]`)) {
+                    item.removeAttribute("data-render");
+                    blockRender(protyle, item);
+                }
+            });
+        }
         return;
     }
     if (operation.action === "insert") {

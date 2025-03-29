@@ -313,9 +313,7 @@ const renderPDF = async (id: string) => {
         })
         Protyle.highlightRender(previewElement, "${servePath}/stage/protyle");
         previewElement.querySelectorAll('[data-type="NodeMathBlock"]').forEach((item) => {
-            item.style.width = "";
-            item.style.boxSizing = "border-box";
-            item.style.width = Math.min(item.clientWidth, width) + "px";
+            // 超级块内不能移除 width https://github.com/siyuan-note/siyuan/issues/14318
             item.removeAttribute('data-render');
         })
         previewElement.querySelectorAll('[data-type="NodeCodeBlock"][data-subtype="mermaid"] svg').forEach((item) => {
@@ -403,6 +401,12 @@ const renderPDF = async (id: string) => {
         if (data.attrs.alias) {
             wysElement.setAttribute("alias", data.attrs.alias);
         }
+        // https://github.com/siyuan-note/siyuan/issues/13669
+        wysElement.querySelectorAll('[data-node-id]').forEach((item) => {
+            if (item.querySelector(".img")) {
+                item.insertAdjacentHTML("beforeend", "<hr style='margin:0;border:0'>");
+            }
+        })
         Protyle.mermaidRender(wysElement, "${servePath}/stage/protyle");
         Protyle.flowchartRender(wysElement, "${servePath}/stage/protyle");
         Protyle.graphvizRender(wysElement, "${servePath}/stage/protyle");

@@ -31,15 +31,14 @@ import {hideAllElements} from "./protyle/ui/hideElements";
 import {loadPlugins, reloadPlugin} from "./plugin/loader";
 import "./assets/scss/base.scss";
 import {reloadEmoji} from "./emoji";
+import {processIOSPurchaseResponse} from "./util/iOSPurchase";
 
 export class App {
     public plugins: import("./plugin").Plugin[] = [];
     public appId: string;
 
     constructor() {
-        /// #if BROWSER
         registerServiceWorker(`${Constants.SERVICE_WORKER_PATH}?v=${Constants.SIYUAN_VERSION}`);
-        /// #endif
         addBaseURL();
 
         this.appId = Constants.SIYUAN_APPID;
@@ -210,4 +209,5 @@ window.openFileByURL = (openURL) => {
 window.showKeyboardToolbar = () => {
     // 防止 Pad 端报错
 };
+window.processIOSPurchaseResponse = processIOSPurchaseResponse;
 /// #endif

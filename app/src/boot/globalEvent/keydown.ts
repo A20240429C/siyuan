@@ -51,7 +51,7 @@ import {openCard, openCardByData} from "../../card/openCard";
 import {lockScreen} from "../../dialog/processSystem";
 import {isWindow} from "../../util/functions";
 import {reloadProtyle} from "../../protyle/util/reload";
-import {fullscreen, updateReadonly} from "../../protyle/breadcrumb/action";
+import {fullscreen} from "../../protyle/breadcrumb/action";
 import {openRecentDocs} from "../../business/openRecentDocs";
 import {App} from "../../index";
 import {openBacklink, openGraph, openOutline, toggleDockBar} from "../../layout/dock/util";
@@ -74,6 +74,8 @@ import {globalCommand} from "./command/global";
 import {duplicateCompletely} from "../../protyle/render/av/action";
 import {copyTextByType} from "../../protyle/toolbar/util";
 import {onlyProtyleCommand} from "./command/protyle";
+import {cancelDrag} from "./dragover";
+import {bindAVPanelKeydown} from "../../protyle/render/av/keydown";
 
 const switchDialogEvent = (app: App, event: MouseEvent) => {
     event.preventDefault();
@@ -503,7 +505,7 @@ const editKeydown = (app: App, event: KeyboardEvent) => {
         event.preventDefault();
         return true;
     }
-    if (!isFileFocus && matchHotKey(window.siyuan.config.keymap.editor.general.copyBlockRef.custom, event)) {
+    if (range && !isFileFocus && matchHotKey(window.siyuan.config.keymap.editor.general.copyBlockRef.custom, event)) {
         event.preventDefault();
         event.stopPropagation();
         if (hasClosestByClassName(range.startContainer, "protyle-title")) {
@@ -518,16 +520,17 @@ const editKeydown = (app: App, event: KeyboardEvent) => {
                 copyPNGByLink(selectImgElement.querySelector("img").getAttribute("src"));
                 return true;
             }
+            const ids = Array.from(protyle.wysiwyg.element.querySelectorAll(".protyle-wysiwyg--select")).map(item => item.getAttribute("data-node-id"));
+            if (ids.length > 0) {
+                copyTextByType(ids, "ref");
+                return true;
+            }
             if (range.toString() !== "") {
                 getContentByInlineHTML(range, (content) => {
                     writeText(`((${nodeElement.getAttribute("data-node-id")} "${content.trim()}"))`);
                 });
             } else {
-                const ids = Array.from(protyle.wysiwyg.element.querySelectorAll(".protyle-wysiwyg--select")).map(item => item.getAttribute("data-node-id"));
-                if (ids.length === 0) {
-                    ids.push(nodeElement.getAttribute("data-node-id"));
-                }
-                copyTextByType(ids, "ref");
+                copyTextByType([nodeElement.getAttribute("data-node-id")], "ref");
             }
         }
         return true;
@@ -555,6 +558,9 @@ const fileTreeKeydown = (app: App, event: KeyboardEvent) => {
         return false;
     }
     const files = dockFile.data.file as Files;
+    if (typeof dockFile.data.file === "boolean") {
+        return true;
+    }
 
     if (matchHotKey(window.siyuan.config.keymap.general.selectOpen1.custom, event)) {
         event.preventDefault();
@@ -1271,6 +1277,11 @@ export const windowKeyDown = (app: App, event: KeyboardEvent) => {
         return;
     }
 
+    if (bindAVPanelKeydown(event)) {
+        event.preventDefault();
+        return;
+    }
+
     if (["Home", "End", "ArrowUp", "ArrowDown"].includes(event.key)) {
         let matchDialog: Dialog;
         // 需找到最顶层的，因此不能用 find
@@ -1395,6 +1406,7 @@ export const windowKeyDown = (app: App, event: KeyboardEvent) => {
     }
 
     if (event.key === "Escape" && !event.isComposing) {
+        cancelDrag();
         const imgPreviewElement = document.querySelector(".protyle-img");
         if (imgPreviewElement) {
             imgPreviewElement.remove();
@@ -1406,7 +1418,7 @@ export const windowKeyDown = (app: App, event: KeyboardEvent) => {
                 window.siyuan.menus.menu.element.style.zIndex < (window.siyuan.dialogs[0].element.querySelector(".b3-dialog") as HTMLElement).style.zIndex) {
                 // 窗口高于菜单时，先关闭窗口，如 av 修改列 icon 时
             } else {
-                window.siyuan.menus.menu.remove();
+                window.siyuan.menus.menu.remove(true);
                 return;
             }
         }

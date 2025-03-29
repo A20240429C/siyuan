@@ -14,7 +14,6 @@
 @import "business/graph";
 @import "business/layout";
 @import "business/block";
-@import "business/drag";
 @import "util/reset";
 @import "util/function";
 @import "business/history";
@@ -253,6 +252,30 @@
     &__name {
       width: 100%;
       text-align: center;
+    }
+  }
+
+  .config-assets {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+    position: relative;
+
+    &__list {
+      overflow: auto;
+      flex: 1;
+    }
+
+    &__preview {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      overflow: auto;
+      flex: 1;
+      margin-top: 8px;
+      padding: 0 8px;
     }
   }
 }

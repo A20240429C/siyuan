@@ -22,13 +22,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/88250/gulu"
 	"github.com/88250/lute"
 	"github.com/gin-gonic/gin"
-	"github.com/jinzhu/copier"
 	"github.com/siyuan-note/logging"
 	"github.com/siyuan-note/siyuan/kernel/conf"
 	"github.com/siyuan-note/siyuan/kernel/model"
@@ -48,6 +46,18 @@ func addMicrosoftDefenderExclusion(c *gin.Context) {
 		ret.Code = -1
 		ret.Msg = err.Error()
 	}
+}
+
+func ignoreAddMicrosoftDefenderExclusion(c *gin.Context) {
+	ret := gulu.Ret.NewResult()
+	defer c.JSON(http.StatusOK, ret)
+
+	if !gulu.OS.IsWindows() {
+		return
+	}
+
+	model.Conf.System.MicrosoftDefenderExcluded = true
+	model.Conf.Save()
 }
 
 func reloadUI(c *gin.Context) {
@@ -155,7 +165,7 @@ func getEmojiConf(c *gin.Context) {
 	items := []map[string]interface{}{}
 	custom["items"] = items
 	if gulu.File.IsDir(customConfDir) {
-		model.CustomEmojis = sync.Map{}
+		model.ClearCustomEmojis()
 		customEmojis, err := os.ReadDir(customConfDir)
 		if err != nil {
 			logging.LogErrorf("read custom emojis failed: %s", err)
@@ -213,7 +223,7 @@ func addCustomEmoji(name string, items *[]map[string]interface{}) {
 	*items = append(*items, emoji)
 
 	imgSrc := "/emojis/" + name
-	model.CustomEmojis.Store(nameWithoutExt, imgSrc)
+	model.AddCustomEmoji(nameWithoutExt, imgSrc)
 }
 
 func checkUpdate(c *gin.Context) {
@@ -254,8 +264,15 @@ func exportConf(c *gin.Context) {
 		return
 	}
 
+	data, err := gulu.JSON.MarshalJSON(model.Conf)
+	if err != nil {
+		logging.LogErrorf("export conf failed: %s", err)
+		ret.Code = -1
+		ret.Msg = err.Error()
+		return
+	}
 	clonedConf := &model.AppConf{}
-	if err := copier.CopyWithOption(clonedConf, model.Conf, copier.Option{IgnoreEmpty: false, DeepCopy: true}); err != nil {
+	if err = gulu.JSON.UnmarshalJSON(data, clonedConf); err != nil {
 		logging.LogErrorf("export conf failed: %s", err)
 		ret.Code = -1
 		ret.Msg = err.Error()
@@ -283,6 +300,7 @@ func exportConf(c *gin.Context) {
 		clonedConf.System.Container = ""
 		clonedConf.System.IsMicrosoftStore = false
 		clonedConf.System.IsInsider = false
+		clonedConf.System.MicrosoftDefenderExcluded = false
 	}
 	clonedConf.Sync = nil
 	clonedConf.Stat = nil
@@ -292,7 +310,7 @@ func exportConf(c *gin.Context) {
 	clonedConf.CloudRegion = 0
 	clonedConf.DataIndexState = 0
 
-	data, err := gulu.JSON.MarshalIndentJSON(clonedConf, "", "  ")
+	data, err = gulu.JSON.MarshalIndentJSON(clonedConf, "", "  ")
 	if err != nil {
 		logging.LogErrorf("export conf failed: %s", err)
 		ret.Code = -1
@@ -395,10 +413,24 @@ func importConf(c *gin.Context) {
 	}
 
 	tmpDir := filepath.Join(importDir, "conf")
-	if err = gulu.Zip.Unzip(tmp, tmpDir); err != nil {
-		logging.LogErrorf("import conf failed: %s", err)
+	os.RemoveAll(tmpDir)
+	if strings.HasSuffix(strings.ToLower(tmp), ".zip") {
+		if err = gulu.Zip.Unzip(tmp, tmpDir); err != nil {
+			logging.LogErrorf("import conf failed: %s", err)
+			ret.Code = -1
+			ret.Msg = err.Error()
+			return
+		}
+	} else if strings.HasSuffix(strings.ToLower(tmp), ".json") {
+		if err = gulu.File.CopyFile(tmp, filepath.Join(tmpDir, f.Filename)); err != nil {
+			logging.LogErrorf("import conf failed: %s", err)
+			ret.Code = -1
+			ret.Msg = err.Error()
+		}
+	} else {
+		logging.LogErrorf("invalid conf package")
 		ret.Code = -1
-		ret.Msg = err.Error()
+		ret.Msg = "invalid conf package"
 		return
 	}
 
@@ -434,12 +466,19 @@ func importConf(c *gin.Context) {
 		return
 	}
 
-	if err = copier.CopyWithOption(model.Conf, importedConf, copier.Option{IgnoreEmpty: true, DeepCopy: true}); err != nil {
-		logging.LogErrorf("import conf failed: %s", err)
-		ret.Code = -1
-		ret.Msg = err.Error()
-		return
-	}
+	model.Conf.FileTree = importedConf.FileTree
+	model.Conf.Tag = importedConf.Tag
+	model.Conf.Editor = importedConf.Editor
+	model.Conf.Export = importedConf.Export
+	model.Conf.Graph = importedConf.Graph
+	model.Conf.UILayout = importedConf.UILayout
+	model.Conf.System = importedConf.System
+	model.Conf.Keymap = importedConf.Keymap
+	model.Conf.Search = importedConf.Search
+	model.Conf.Flashcard = importedConf.Flashcard
+	model.Conf.AI = importedConf.AI
+	model.Conf.Bazaar = importedConf.Bazaar
+	model.Conf.Save()
 
 	logging.LogInfof("imported conf")
 }
@@ -536,6 +575,9 @@ func setAccessAuthCode(c *gin.Context) {
 	if model.MaskedAccessAuthCode == aac {
 		aac = model.Conf.AccessAuthCode
 	}
+
+	aac = strings.TrimSpace(aac)
+	aac = util.RemoveInvalid(aac)
 
 	model.Conf.AccessAuthCode = aac
 	model.Conf.Save()

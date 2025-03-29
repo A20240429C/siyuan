@@ -360,6 +360,13 @@ func InitConf() {
 	Conf.Sync.WebDAV.Endpoint = util.NormalizeEndpoint(Conf.Sync.WebDAV.Endpoint)
 	Conf.Sync.WebDAV.Timeout = util.NormalizeTimeout(Conf.Sync.WebDAV.Timeout)
 	Conf.Sync.WebDAV.ConcurrentReqs = util.NormalizeConcurrentReqs(Conf.Sync.WebDAV.ConcurrentReqs, conf.ProviderWebDAV)
+	if nil == Conf.Sync.Local {
+		Conf.Sync.Local = &conf.Local{}
+	}
+	Conf.Sync.Local.Endpoint = util.NormalizeLocalPath(Conf.Sync.Local.Endpoint)
+	Conf.Sync.Local.Timeout = util.NormalizeTimeout(Conf.Sync.Local.Timeout)
+	Conf.Sync.Local.ConcurrentReqs = util.NormalizeConcurrentReqs(Conf.Sync.Local.ConcurrentReqs, conf.ProviderLocal)
+
 	if util.ContainerDocker == util.Container {
 		Conf.Sync.Perception = false
 	}
@@ -487,6 +494,8 @@ func InitConf() {
 	if "" != util.AccessAuthCode {
 		Conf.AccessAuthCode = util.AccessAuthCode
 	}
+	Conf.AccessAuthCode = strings.TrimSpace(Conf.AccessAuthCode)
+	Conf.AccessAuthCode = util.RemoveInvalid(Conf.AccessAuthCode)
 
 	Conf.LocalIPs = util.GetLocalIPs()
 
@@ -682,7 +691,15 @@ func Close(force, setCurrentWorkspace bool, execInstallPkg int) (exitCode int) {
 	return
 }
 
-var CustomEmojis = sync.Map{}
+var customEmojis = sync.Map{}
+
+func AddCustomEmoji(emojiName, imgSrc string) {
+	customEmojis.Store(emojiName, imgSrc)
+}
+
+func ClearCustomEmojis() {
+	customEmojis.Clear()
+}
 
 func NewLute() (ret *lute.Lute) {
 	ret = util.NewLute()
@@ -692,12 +709,22 @@ func NewLute() (ret *lute.Lute) {
 	ret.SetSpellcheck(Conf.Editor.Spellcheck)
 
 	customEmojiMap := map[string]string{}
-	CustomEmojis.Range(func(key, value interface{}) bool {
+	customEmojis.Range(func(key, value interface{}) bool {
 		customEmojiMap[key.(string)] = value.(string)
 		return true
 	})
 	ret.PutEmojis(customEmojiMap)
 	return
+}
+
+func enableLuteInlineSyntax(luteEngine *lute.Lute) {
+	luteEngine.SetInlineAsterisk(true)
+	luteEngine.SetInlineUnderscore(true)
+	luteEngine.SetSup(true)
+	luteEngine.SetSub(true)
+	luteEngine.SetTag(true)
+	luteEngine.SetInlineMath(true)
+	luteEngine.SetGFMStrikethrough(true)
 }
 
 func (conf *AppConf) Save() {
@@ -820,6 +847,7 @@ func (conf *AppConf) Language(num int) (ret string) {
 	ret = conf.language(num)
 	subscribeURL := util.GetCloudAccountServer() + "/subscribe/siyuan"
 	ret = strings.ReplaceAll(ret, "${url}", subscribeURL)
+	ret = strings.ReplaceAll(ret, "${accountServer}", util.GetCloudAccountServer())
 	return
 }
 
@@ -973,6 +1001,7 @@ func clearWorkspaceTemp() {
 	os.RemoveAll(filepath.Join(util.TempDir, "import"))
 	os.RemoveAll(filepath.Join(util.TempDir, "repo"))
 	os.RemoveAll(filepath.Join(util.TempDir, "os"))
+	os.RemoveAll(filepath.Join(util.TempDir, "base64"))
 	os.RemoveAll(filepath.Join(util.TempDir, "blocktree.msgpack")) // v2.7.2 前旧版的块树数据
 	os.RemoveAll(filepath.Join(util.TempDir, "blocktree"))         // v3.1.0 前旧版的块树数据
 

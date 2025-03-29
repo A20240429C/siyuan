@@ -462,6 +462,10 @@ export abstract class Constants {
                 ai: {default: "", custom: ""},
                 switchReadonly: {default: "", custom: ""},
                 switchAdjust: {default: "", custom: ""},
+                rtl: {default: "", custom: ""},
+                ltr: {default: "", custom: ""},
+                aiWriting: {default: "", custom: ""},
+                openInNewTab: {default: "", custom: ""},
             },
             insert: {
                 appearance: {default: "⌥⌘X", custom: "⌥⌘X"},
@@ -657,17 +661,17 @@ export abstract class Constants {
         "text": true,
         "imgText": true,
         "imgTitle": true,
-        "imgSrc": false,
+        "imgSrc": true,
         "aText": true,
         "aTitle": true,
-        "aHref": false,
-        "code": false,
+        "aHref": true,
+        "code": true,
         "em": true,
         "strong": true,
-        "inlineMath": false,
+        "inlineMath": true,
         "inlineMemo": true,
-        "blockRef": false,
-        "fileAnnotationRef": false,
+        "blockRef": true,
+        "fileAnnotationRef": true,
         "kbd": true,
         "mark": true,
         "s": true,
@@ -676,9 +680,9 @@ export abstract class Constants {
         "tag": true,
         "u": true,
         "docTitle": true,
-        "codeBlock": false,
-        "mathBlock": false,
-        "htmlBlock": false
+        "codeBlock": true,
+        "mathBlock": true,
+        "htmlBlock": true
     };
 
     // image

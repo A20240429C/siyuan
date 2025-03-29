@@ -160,6 +160,15 @@ export const enter = (blockElement: HTMLElement, range: Range, protyle: IProtyle
             action: "delete",
             id: blockId,
         }, undoInsert]);
+        if (topId === blockId && blockElement.parentElement.classList.contains("sb") &&
+            blockElement.parentElement.getAttribute("data-sb-layout") === "col") {
+            turnsIntoOneTransaction({
+                protyle,
+                selectsElement: [blockElement.previousElementSibling, blockElement],
+                type: "BlocksMergeSuperBlock",
+                level: "row"
+            });
+        }
         focusByWbr(blockElement, range);
         return true;
     }
@@ -480,12 +489,14 @@ const listEnter = (protyle: IProtyle, blockElement: HTMLElement, range: Range) =
     }
     range.setEndAfter(editableElement.lastChild);
     newElement = genListItemElement(listItemElement, 0, false);
-    const selectNode = range.extractContents();
-    if (selectNode.firstChild.nodeType !== 3 && selectNode.firstChild.textContent === "") {
-        // 回车移除空元素 https://github.com/siyuan-note/insider/issues/480
-        selectNode.firstChild.after(document.createElement("wbr"));
-        selectNode.firstChild.remove();
-    }
+    const newEditableElement = getContenteditableElement(newElement);
+    newEditableElement.appendChild(range.extractContents());
+    // 回车移除空元素 https://github.com/siyuan-note/insider/issues/480
+    // https://github.com/siyuan-note/siyuan/issues/12273
+    // 文字和图片中间回车后图片前需添加 zwsp
+    newEditableElement.parentElement.outerHTML = protyle.lute.SpinBlockDOM(newEditableElement.parentElement.outerHTML);
+    listItemElement.insertAdjacentElement("afterend", newElement);
+    mathRender(newElement);
     // https://github.com/siyuan-note/siyuan/issues/3850
     // https://github.com/siyuan-note/siyuan/issues/6018
     if ((editableElement?.lastElementChild?.getAttribute("data-type") || "").indexOf("inline-math") > -1 &&
@@ -496,8 +507,6 @@ const listEnter = (protyle: IProtyle, blockElement: HTMLElement, range: Range) =
     if (editableElement?.lastElementChild?.classList.contains("img") && !hasNextSibling(editableElement?.lastElementChild)) {
         editableElement.insertAdjacentText("beforeend", Constants.ZWSP);
     }
-    getContenteditableElement(newElement).appendChild(selectNode);
-    listItemElement.insertAdjacentElement("afterend", newElement);
     if (listItemElement.getAttribute("data-subtype") === "o") {
         updateListOrder(listItemElement.parentElement);
     }
